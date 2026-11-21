@@ -3,6 +3,13 @@
 All notable changes to `claude-venice` are documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.1 — 2026-11-21
+
+### Changed
+
+- Documented the optional `cv` terminal shortcut (`~/.local/bin/cv -> claude-venice`) for launching Claude Code in `bypassPermissions` mode.
+- Documented `venice-bridge >= 0.2.5` as the recommended backend for Claude Code `2.1.329` tool-schema parity, explicit `webEnabled: false` default, and read-only SQLite / date / deferred grep & glob routing.
+
 ## 1.0.0 — 2026-11-21
 
 ### Added

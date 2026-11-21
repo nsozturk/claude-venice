@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.0.0-8b5cf6" alt="Release v1.0.0"></a>
+  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.0.1-8b5cf6" alt="Release v1.0.1"></a>
   <img src="https://img.shields.io/badge/bash%20%2B%20python-3.10%2B-3776ab?logo=python&logoColor=white" alt="Bash + Python 3.10+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/API%20cost-zero-0ea5e9" alt="API cost: zero">
@@ -38,7 +38,7 @@ Documentation site: <https://nsozturk.github.io/claude-venice/> · Backend bridg
 ## Prerequisites
 
 1. [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude` on `PATH`).
-2. Running [`venice-bridge`](https://github.com/nsozturk/venice-bridge) (`127.0.0.1:18891`) and `venice-adapters` (`127.0.0.1:18892`).
+2. Running [`venice-bridge`](https://github.com/nsozturk/venice-bridge) **`>= 0.2.5`** (`127.0.0.1:18891`) and `venice-adapters` (`127.0.0.1:18892`). `v0.2.5+` disables Venice's automatic web-search hijacking on tool turns and adds Claude Code `2.1.329` schema parity + SQL/date/grep/glob tool routing (including large multi-GB SQLite databases).
 
 ## Quick Start
 
@@ -47,9 +47,10 @@ git clone https://github.com/nsozturk/claude-venice.git
 cd claude-venice
 chmod +x claude-venice
 ln -s "$PWD/claude-venice" ~/.local/bin/claude-venice
+ln -s "$PWD/claude-venice" ~/.local/bin/cv   # optional 2-letter shortcut (defaults to bypassPermissions)
 
 # Start Claude Code on Venice (default: deepseek-v4-1-flash-uncensored)
-claude-venice
+claude-venice   # or: cv
 
 # Lean mode (disables MCP servers for tighter tool calling)
 claude-venice --lean
@@ -110,7 +111,6 @@ Use `claude-venice --lean` in repositories that configure many MCP servers (`.mc
 
 MIT — see [LICENSE](LICENSE).
 
-
 ---
 
 # AGENTS.md — `claude-venice` Agent Contract
@@ -152,13 +152,19 @@ python3 test_claude_venice.py
 - Never commit `~/.claude-venice/`, session transcripts, cookies, or JWTs.
 - Never print live `venice.ai` cookies or Clerk tokens.
 
-
 ---
 
 # Changelog
 
 All notable changes to `claude-venice` are documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
+
+## 1.0.1 — 2026-11-21
+
+### Changed
+
+- Documented the optional `cv` terminal shortcut (`~/.local/bin/cv -> claude-venice`) for launching Claude Code in `bypassPermissions` mode.
+- Documented `venice-bridge >= 0.2.5` as the recommended backend for Claude Code `2.1.329` tool-schema parity, explicit `webEnabled: false` default, and read-only SQLite / date / deferred grep & glob routing.
 
 ## 1.0.0 — 2026-11-21
 
@@ -170,3 +176,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `--models` and `--quota` inspection commands plus automatic preflight health checks and low-quota warnings (`< 500` requests remaining).
 - Default `--dangerously-skip-permissions --permission-mode bypassPermissions` pairing so both fresh and `--resume <session-id>` sessions run without interactive permission prompt loops (opt out via `VENICE_CLAUDE_SKIP_PERMS=0` or an explicit `--permission-mode`).
 - Unit test suite (`test_claude_venice.py`) verifying flag ordering, `--lean`, `--mcp-config`, empty-arg `set -u` safety, and permission-mode forwarding.
+
+---
+
+# Global Agent Rule — `claude-venice`
+
+Copy this snippet into `~/.claude/agents/claude-venice.md` or your agent's global instructions:
+
+```markdown
+## claude-venice (Claude Code on Venice Web, $0 API cost)
+
+Use `claude-venice` to run Claude Code against a local `venice-bridge` + `venice-adapters` stack in an isolated `~/.claude-venice` profile without touching the official `claude` login.
+
+- Always close stdin (`</dev/null`) and prefer `--lean` for non-interactive runs:
+  `claude-venice --lean -p "<task>" </dev/null`
+- Check quota or models without spending a turn:
+  `claude-venice --quota` · `claude-venice --models`
+- Override model: `claude-venice -m <venice-model-id> ...` (supports `:web`, `:xsearch`, `:think`, `venice-auto`, `ollama/<id>`).
+- Default mode is `bypassPermissions` (works on `--resume` too); set `VENICE_CLAUDE_SKIP_PERMS=0` to restore prompts.
+```

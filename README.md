@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.0.0-8b5cf6" alt="Release v1.0.0"></a>
+  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.0.1-8b5cf6" alt="Release v1.0.1"></a>
   <img src="https://img.shields.io/badge/bash%20%2B%20python-3.10%2B-3776ab?logo=python&logoColor=white" alt="Bash + Python 3.10+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/API%20cost-zero-0ea5e9" alt="API cost: zero">
@@ -38,7 +38,7 @@ Documentation site: <https://nsozturk.github.io/claude-venice/> · Backend bridg
 ## Prerequisites
 
 1. [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude` on `PATH`).
-2. Running [`venice-bridge`](https://github.com/nsozturk/venice-bridge) (`127.0.0.1:18891`) and `venice-adapters` (`127.0.0.1:18892`).
+2. Running [`venice-bridge`](https://github.com/nsozturk/venice-bridge) **`>= 0.2.5`** (`127.0.0.1:18891`) and `venice-adapters` (`127.0.0.1:18892`). `v0.2.5+` disables Venice's automatic web-search hijacking on tool turns and adds Claude Code `2.1.329` schema parity + SQL/date/grep/glob tool routing (including large multi-GB SQLite databases).
 
 ## Quick Start
 
@@ -47,9 +47,10 @@ git clone https://github.com/nsozturk/claude-venice.git
 cd claude-venice
 chmod +x claude-venice
 ln -s "$PWD/claude-venice" ~/.local/bin/claude-venice
+ln -s "$PWD/claude-venice" ~/.local/bin/cv   # optional 2-letter shortcut (defaults to bypassPermissions)
 
 # Start Claude Code on Venice (default: deepseek-v4-1-flash-uncensored)
-claude-venice
+claude-venice   # or: cv
 
 # Lean mode (disables MCP servers for tighter tool calling)
 claude-venice --lean
