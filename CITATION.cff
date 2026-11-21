@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use claude-venice in your work, please cite it as below."
+title: "claude-venice"
+version: "1.0.0"
+date-released: "2026-11-21"
+license: "MIT"
+repository-code: "https://github.com/nsozturk/claude-venice"
+url: "https://nsozturk.github.io/claude-venice/"
+authors:
+  - family-names: "Ozturk"
+    given-names: "N."
+abstract: "claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost."

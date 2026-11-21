@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>claude-venice — Run Claude Code on your venice.ai web subscription ($0 API cost)</title>
+  <meta name="description" content="claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.">
+  <link rel="canonical" href="https://nsozturk.github.io/claude-venice/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="claude-venice">
+  <meta property="og:title" content="claude-venice — Claude Code on Venice Web ($0 API Cost)">
+  <meta property="og:description" content="claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.">
+  <meta property="og:url" content="https://nsozturk.github.io/claude-venice/">
+  <meta property="og:image" content="https://nsozturk.github.io/claude-venice/assets/banner.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="claude-venice — Claude Code on Venice Web ($0 API Cost)">
+  <meta name="twitter:description" content="claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.">
+  <meta name="twitter:image" content="https://nsozturk.github.io/claude-venice/assets/banner.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "claude-venice",
+        "operatingSystem": "macOS",
+        "applicationCategory": "DeveloperApplication",
+        "softwareVersion": "1.0.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "url": "https://nsozturk.github.io/claude-venice/",
+        "codeRepository": "https://github.com/nsozturk/claude-venice",
+        "downloadUrl": "https://github.com/nsozturk/claude-venice/releases",
+        "description": "claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How do I run Claude Code with Venice AI on Mac without an API key?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Start venice-bridge (127.0.0.1:18891) and venice-adapters (127.0.0.1:18892) with your venice.ai browser cookie, then run claude-venice. No Anthropic or paid Venice API key is required." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does claude-venice touch my normal claude login or settings?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. It isolates everything inside ~/.claude-venice (CLAUDE_CONFIG_DIR and CLAUDE_HOME) and unsets ANTHROPIC_API_KEY." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does claude-venice enable bypassPermissions by default?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Claude Code's auto mode relies on a safety classifier prompt that fast Venice models cannot evaluate reliably. Pairing --dangerously-skip-permissions --permission-mode bypassPermissions keeps both fresh and --resume sessions running without prompts. Set VENICE_CLAUDE_SKIP_PERMS=0 to restore prompts." }
+          },
+          {
+            "@type": "Question",
+            "name": "When should I use --lean?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Use claude-venice --lean in repositories with .mcp.json to disable unused MCP servers and keep the tool schema block compact." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --surface: #0f172a;
+      --surface-2: #151f38;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #8b5cf6;
+      --cyan: #38bdf8;
+      --green: #22c55e;
+      --warn: #f59e0b;
+      --border: #1e293b;
+      --code-bg: #0b1120;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: rgba(9,13,22,.9); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: #f8fafc; }
+    .pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(139,92,246,.2); color: #c4b5fd; border: 1px solid rgba(139,92,246,.4); }
+    .nav-links { display: flex; gap: 18px; font-size: 14px; }
+    .layout { display: grid; grid-template-columns: 260px 1fr; max-width: 1240px; margin: 0 auto; gap: 32px; padding: 24px; }
+    .sidebar { position: sticky; top: 72px; align-self: start; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .search { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--code-bg); color: var(--text); font-size: 13px; margin-bottom: 14px; }
+    .sidebar h4 { margin: 14px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .sidebar a { display: block; padding: 6px 10px; border-radius: 7px; font-size: 14px; color: var(--text); }
+    .sidebar a:hover, .sidebar a.active { background: rgba(139,92,246,.18); color: #fff; text-decoration: none; }
+    .content { min-width: 0; }
+    .banner-hero { border-radius: 14px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 24px; }
+    .banner-hero img { display: block; width: 100%; height: auto; }
+    section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; margin-bottom: 22px; }
+    h1, h2, h3 { color: #f8fafc; margin-top: 0; }
+    h2 { font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 14px; }
+    .lead { font-size: 16px; color: #cbd5e1; }
+    .callout { border-left: 4px solid var(--warn); background: rgba(245,158,11,.08); padding: 14px 16px; border-radius: 8px; margin: 14px 0; }
+    .callout strong { color: #fde68a; }
+    pre { position: relative; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #e2e8f0; }
+    p code, li code, td code { background: rgba(148,163,184,.14); padding: 2px 6px; border-radius: 5px; font-size: .9em; }
+    .copy-btn { position: absolute; top: 8px; right: 8px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .copy-btn:hover { color: #fff; border-color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .shot-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .shot-grid img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); display: block; }
+    .hidden { display: none !important; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 0 40px; }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">claude-venice <span class="pill">v1.0.0</span></div>
+    <nav class="nav-links">
+      <a href="https://github.com/nsozturk/claude-venice">GitHub</a>
+      <a href="https://github.com/nsozturk/venice-bridge">venice-bridge</a>
+      <a href="llms.txt">llms.txt</a>
+    </nav>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <input id="doc-search" class="search" type="search" placeholder="Search docs..." aria-label="Search documentation">
+      <h4>Guide</h4>
+      <a href="#overview">Overview</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#quickstart">Quick Start</a>
+      <a href="#commands">CLI Commands & Flags</a>
+      <a href="#permissions">Permissions & --resume</a>
+      <h4>Reference</h4>
+      <a href="#architecture">Architecture</a>
+      <a href="#agents">AI Agent Integration</a>
+      <a href="#alternatives">Alternatives</a>
+      <a href="#faq">FAQ</a>
+    </aside>
+
+    <main class="content">
+      <div class="banner-hero">
+        <img src="assets/banner.png" onerror="this.src='../assets/banner.png'" alt="claude-venice Banner" width="2560" height="720">
+      </div>
+
+      <section id="overview" data-search="overview isolated profile venice-bridge zero api cost">
+        <h2>Overview</h2>
+        <p class="lead">claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.</p>
+        <ul>
+          <li><strong>Isolated profile:</strong> Keeps all state in <code>~/.claude-venice</code> (<code>CLAUDE_CONFIG_DIR</code>) and unsets <code>ANTHROPIC_API_KEY</code> so your official Claude Code install is never modified.</li>
+          <li><strong>Lean MCP mode:</strong> <code>--lean</code> disables MCP servers via <code>--strict-mcp-config</code> to keep tool prompts compact.</li>
+          <li><strong>Preflight checks:</strong> Verifies <code>venice-bridge</code> (<code>:18891</code>), <code>venice-adapters</code> (<code>:18892</code>), active Venice login, and warns below 500 daily requests.</li>
+        </ul>
+      </section>
+
+      <section id="screenshots" data-search="screenshots terminal cli quota bypass permissions">
+        <h2>Screenshots</h2>
+        <div class="shot-grid">
+          <a href="assets/screenshots/01-claude-venice-cli.png" target="_blank" rel="noopener">
+            <img src="assets/screenshots/01-claude-venice-cli.png" alt="claude-venice --lean terminal session and --quota output" width="1600" height="920" loading="lazy">
+          </a>
+        </div>
+      </section>
+
+      <section id="quickstart" data-search="install quickstart symlink git clone prerequisites">
+        <h2>Quick Start</h2>
+        <p>Make sure <a href="https://github.com/nsozturk/venice-bridge">venice-bridge</a> (<code>127.0.0.1:18891</code>) and <code>venice-adapters</code> (<code>127.0.0.1:18892</code>) are running, then install the launcher:</p>
+        <pre><code>git clone https://github.com/nsozturk/claude-venice.git
+cd claude-venice
+chmod +x claude-venice
+ln -s "$PWD/claude-venice" ~/.local/bin/claude-venice
+
+claude-venice --lean</code></pre>
+      </section>
+
+      <section id="commands" data-search="cli commands flags lean models quota resume model">
+        <h2>CLI Commands &amp; Flags</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td><code>claude-venice</code></td><td>Starts Claude Code in <code>~/.claude-venice</code> with <code>deepseek-v4-1-flash-uncensored</code> and <code>bypassPermissions</code>.</td></tr>
+            <tr><td><code>claude-venice --lean</code></td><td>Disables all MCP servers (<code>--strict-mcp-config --mcp-config '{"mcpServers":{}}'</code>). Works anywhere before <code>--</code>.</td></tr>
+            <tr><td><code>claude-venice -m &lt;id&gt;</code></td><td>Switches Venice model (<code>:web</code>, <code>:xsearch</code>, <code>:think</code>, <code>venice-auto</code>, or local <code>ollama/&lt;model&gt;</code>).</td></tr>
+            <tr><td><code>claude-venice --resume &lt;id&gt;</code></td><td>Resumes an older session while forcing <code>bypassPermissions</code>.</td></tr>
+            <tr><td><code>claude-venice --models</code></td><td>Lists all model IDs currently served by <code>venice-bridge</code>.</td></tr>
+            <tr><td><code>claude-venice --quota</code></td><td>Prints remaining daily Venice web quota and bridge cache stats.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="permissions" data-search="bypass permissions dangerously skip permissions resume auto mode">
+        <h2>Permissions &amp; <code>--resume</code></h2>
+        <div class="callout">
+          <strong>Warning:</strong> By default, <code>claude-venice</code> passes <code>--dangerously-skip-permissions --permission-mode bypassPermissions</code> so tools run without prompts — including on resumed sessions originally saved in <code>default</code> mode.
+        </div>
+        <p>Set <code>VENICE_CLAUDE_SKIP_PERMS=0</code> or pass an explicit <code>--permission-mode default</code> to restore interactive prompts.</p>
+        <pre><code>VENICE_CLAUDE_SKIP_PERMS=0 claude-venice
+claude-venice --permission-mode plan -p "Outline the refactor plan."</code></pre>
+      </section>
+
+      <section id="architecture" data-search="architecture adapter bridge messages">
+        <h2>Architecture</h2>
+        <pre><code>claude-venice (Bash launcher, ~/.claude-venice)
+  └──► claude CLI ──POST /v1/messages──► venice-adapters (:18892)
+                                            └──► venice-bridge (:18891)
+                                                   └──► venice.ai web session</code></pre>
+      </section>
+
+      <section id="agents" data-search="agents non-interactive automation test">
+        <h2>AI Agent Integration</h2>
+        <p>When invoking <code>claude-venice</code> from another agent or script, always close stdin and use <code>--lean -p</code>:</p>
+        <pre><code>claude-venice --lean -p "List failing tests and exit." &lt;/dev/null</code></pre>
+        <p>Run offline unit tests (no network calls required):</p>
+        <pre><code>python3 test_claude_venice.py</code></pre>
+      </section>
+
+      <section id="alternatives" data-search="alternatives compared official claude code local ccl opencode codex">
+        <h2>Alternatives / Compared With</h2>
+        <ul>
+          <li><strong>Official Claude Code (Anthropic):</strong> Best-in-class reasoning and native tools, metered by API tokens or Claude subscription. <code>claude-venice</code> is a zero-API-cost companion for bulk exploration.</li>
+          <li><strong><a href="https://github.com/nsozturk/claude-code-local">claude-code-local (ccl)</a>:</strong> Runs Claude Code offline against local Ollama/LM Studio models. <code>claude-venice</code> targets Venice's cloud web plan (with optional <code>ollama/&lt;model&gt;</code> pass-through).</li>
+        </ul>
+      </section>
+
+      <section id="faq" data-search="faq questions api key login profile bypass lean">
+        <h2>FAQ</h2>
+        <h3>How do I run Claude Code with Venice AI on Mac without an API key?</h3>
+        <p>Run <code>venice-bridge</code> + <code>venice-adapters</code> with your <code>venice.ai</code> browser cookie, then launch <code>claude-venice</code>. No Anthropic or Venice paid API key is needed.</p>
+        <h3>Does <code>claude-venice</code> affect my official Claude Code login?</h3>
+        <p>No. All config and history stay isolated in <code>~/.claude-venice</code>.</p>
+        <h3>When should I use <code>--lean</code>?</h3>
+        <p>Whenever a repository defines many MCP servers in <code>.mcp.json</code>; disabling unused MCP tools keeps the tool prompt compact and improves reliability.</p>
+      </section>
+
+      <footer>
+        MIT License · <a href="https://github.com/nsozturk/claude-venice">github.com/nsozturk/claude-venice</a> · <a href="llms-full.txt">llms-full.txt</a>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // Copy buttons for every <pre>
+    document.querySelectorAll('pre').forEach(pre => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(pre.querySelector('code').innerText).then(() => {
+          btn.textContent = 'Copied';
+          setTimeout(() => btn.textContent = 'Copy', 1400);
+        });
+      });
+      pre.appendChild(btn);
+    });
+    // Live sidebar search
+    const input = document.getElementById('doc-search');
+    const sections = Array.from(document.querySelectorAll('main section'));
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      sections.forEach(s => {
+        const hay = (s.textContent + ' ' + (s.dataset.search || '')).toLowerCase();
+        s.classList.toggle('hidden', !!q && !hay.includes(q));
+      });
+    });
+  </script>
+</body>
+</html>

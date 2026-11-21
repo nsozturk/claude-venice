@@ -1,0 +1,21 @@
+# claude-venice
+
+> claude-venice is a free, open-source Claude Code CLI launcher for macOS that runs Claude Code against a local venice-bridge web subscription in an isolated profile with zero API cost.
+
+## What it does
+- Launches `claude` in an isolated `~/.claude-venice` profile (`CLAUDE_CONFIG_DIR`) so the official Claude Code login stays untouched.
+- Routes `/v1/messages` through `venice-adapters` (`127.0.0.1:18892`) -> `venice-bridge` (`127.0.0.1:18891`) -> `venice.ai` web plan.
+- Enables `--dangerously-skip-permissions --permission-mode bypassPermissions` by default (including on `--resume`), with `--lean` MCP disabling, `--models`, and `--quota`.
+
+## Install & Use
+- `git clone https://github.com/nsozturk/claude-venice.git && ln -s "$PWD/claude-venice/claude-venice" ~/.local/bin/claude-venice`
+- `claude-venice` · `claude-venice --lean` · `claude-venice -m <model-id>` · `claude-venice --quota` · `claude-venice --models`
+
+## Links
+- Documentation: https://nsozturk.github.io/claude-venice/
+- Full Markdown Docs: https://nsozturk.github.io/claude-venice/llms-full.txt
+- Repository: https://github.com/nsozturk/claude-venice
+- README: https://github.com/nsozturk/claude-venice/blob/main/README.md
+- Agent Contract: https://github.com/nsozturk/claude-venice/blob/main/AGENTS.md
+- Backend Bridge: https://github.com/nsozturk/venice-bridge
+- Releases: https://github.com/nsozturk/claude-venice/releases

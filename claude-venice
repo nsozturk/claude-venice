@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# claude-venice — Claude Code CLI on a local venice-bridge (your venice.ai web plan, no API credits).
+#
+#   claude  --/v1/messages-->  venice-adapters :18892  -->  venice-bridge :18891  -->  venice.ai web
+#
+# Isolated profile ~/.claude-venice: the official `claude`/Opus install and its auth stay untouched.
+# Default model is `deepseek-v4-1-flash-uncensored`; override with -m <id>, VENICE_CLAUDE_MODEL, or /model.
+#
+# Usage:  claude-venice [-m <venice-model-id>] [--lean] [claude args...]
+#         claude-venice --models     # list Venice model ids the bridge serves
+set -euo pipefail
+
+ADAPTER="http://127.0.0.1:18892"
+BRIDGE="http://127.0.0.1:18891"
+PROFILE="$HOME/.claude-venice"
+MODEL="${VENICE_CLAUDE_MODEL:-deepseek-v4-1-flash-uncensored}"
+LEAN=0
+
+# Parse launcher-owned flags anywhere before `--`: -m <model> and --lean.
+PASS_ARGS=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -m)
+      if [ "$#" -ge 2 ]; then
+        MODEL="$2"; shift 2
+      else
+        PASS_ARGS+=("$1"); shift
+      fi
+      ;;
+    --lean)
+      LEAN=1; shift
+      ;;
+    --)
+      PASS_ARGS+=("$@"); break
+      ;;
+    *)
+      PASS_ARGS+=("$1"); shift
+      ;;
+  esac
+done
+if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
+  set -- "${PASS_ARGS[@]}"
+else
+  set --
+fi
+
+if [ "${1:-}" = "--models" ]; then
+  curl -s --noproxy '*' --max-time 10 "$BRIDGE/v1/models" \
+    | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  exit 0
+fi
+
+# --quota: show remaining Venice web quota + bridge cache stats (works for any bridge user, incl. OpenCode)
+if [ "${1:-}" = "--quota" ]; then
+  curl -s --noproxy '*' --max-time 5 "$BRIDGE/health" \
+    | python3 -c "import sys,json
+d=json.load(sys.stdin); q=d.get('chat_quota') or {}; c=d.get('cache') or {}
+print('Venice web quota  remaining=%s  resets_in_min=%s' % (q.get('remaining','?'), q.get('resets_in_min','?')))
+print('Bridge cache      hits=%s misses=%s entries=%s enabled=%s' % (c.get('hits',0), c.get('misses',0), c.get('entries',0), c.get('enabled')))" 2>/dev/null \
+    || echo "could not read $BRIDGE/health"
+  exit 0
+fi
+
+# --- preflight: bridge + adapter must be up and the Venice session active ---
+die() { echo "❌ $1" >&2; exit 1; }
+
+bh="$(curl -s --noproxy '*' --max-time 3 "$BRIDGE/health" 2>/dev/null || true)"
+[ -n "$bh" ] || die "venice-bridge ($BRIDGE) is down.  Start it: python3 venice_bridge.py"
+echo "$bh" | grep -q '"venice_session": *"active"' \
+  || die "Venice web session is not active (login expired). Refresh the cookie file (README, Quick start step 1)."
+
+curl -s --noproxy '*' --max-time 3 "$ADAPTER/health" >/dev/null 2>&1 \
+  || die "venice-adapters ($ADAPTER) is down.  Start it: python3 venice_adapters.py"
+
+# quota monitor: the web plan is request-metered, so watch the daily quota (not tokens). Warn when low.
+Q_REM="$(echo "$bh" | python3 -c "import sys,json; print((json.load(sys.stdin).get('chat_quota') or {}).get('remaining',''))" 2>/dev/null || echo '')"
+case "$Q_REM" in
+  ''|*[!0-9]*) : ;;                                   # unknown / non-numeric: skip
+  *) [ "$Q_REM" -lt 500 ] && echo "⚠️  Venice web quota low: $Q_REM requests left today (run 'claude-venice --quota')." >&2 ;;
+esac
+
+# --- isolated profile + Venice routing (overrides any inherited provider/auth env) ---
+export CLAUDE_CONFIG_DIR="$PROFILE"
+export CLAUDE_HOME="$PROFILE"
+mkdir -p "$PROFILE"
+
+unset ANTHROPIC_API_KEY            # no real Anthropic credential reaches Venice
+export ANTHROPIC_BASE_URL="$ADAPTER"
+export ANTHROPIC_AUTH_TOKEN="venice-local"   # adapter ignores auth; a filler keeps Claude Code happy
+export ANTHROPIC_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+
+# a local Venice id is not a known Claude model — skip the context-window enforcement warning
+export CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT="1"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
+export API_TIMEOUT_MS="3000000"
+export NO_PROXY="127.0.0.1,localhost"
+
+command -v claude >/dev/null 2>&1 || die "'claude' command not found on PATH"
+
+# --- no permission prompts by default (YOLO) ---
+# Two reasons claude-venice skips permission prompts by default:
+#  1. Venice's weak models can't drive Claude Code's auto-mode safety classifier, so auto mode blocks
+#     with "Auto mode could not evaluate this action and is blocking it for safety".
+#  2. Prompting on every tool call is noise for a free throwaway runner.
+# It adds --dangerously-skip-permissions UNLESS you already passed a permission flag, or opt out with
+# VENICE_CLAUDE_SKIP_PERMS=0 (then normal prompts / your chosen --permission-mode apply).
+add_skip="${VENICE_CLAUDE_SKIP_PERMS:-1}"
+has_dsp=0
+want_bypass=0
+prev=""
+for a in "$@"; do
+  case "$a" in
+    --dangerously-skip-permissions) add_skip=0; has_dsp=1 ;;
+    --permission-mode=bypassPermissions) add_skip=0; want_bypass=1 ;;
+    --permission-mode|--permission-mode=*) add_skip=0 ;;
+  esac
+  if [ "$prev" = "--permission-mode" ] && [ "$a" = "bypassPermissions" ]; then
+    want_bypass=1
+  fi
+  prev="$a"
+done
+if [ "$add_skip" = "1" ]; then
+  set -- --dangerously-skip-permissions --permission-mode bypassPermissions "$@"
+elif [ "$want_bypass" = "1" ] && [ "$has_dsp" = "0" ]; then
+  set -- --dangerously-skip-permissions "$@"
+fi
+
+if [ "$LEAN" = "1" ]; then
+  has_mcp_cfg=0
+  for a in "$@"; do
+    case "$a" in
+      --mcp-config|--mcp-config=*) has_mcp_cfg=1 ;;
+    esac
+  done
+  if [ "$has_mcp_cfg" = "1" ]; then
+    set -- --strict-mcp-config "$@"
+  else
+    set -- --strict-mcp-config --mcp-config '{"mcpServers":{}}' "$@"
+  fi
+fi
+
+if [ -t 1 ]; then
+  echo "🜂 Claude Code on Venice — model: $MODEL"
+  echo "   adapter: $ADAPTER   profile: $PROFILE   (official claude/Opus untouched)"
+  [ -n "$Q_REM" ] && echo "   web quota remaining: $Q_REM   (bridge response-cache on; 'claude-venice --quota' for details)"
+  [ "$add_skip" = "1" ] && echo "   permissions: skipped — no prompts (set VENICE_CLAUDE_SKIP_PERMS=0 to restore)"
+  [ "$LEAN" = "1" ] && echo "   mode: --lean (MCP servers disabled via --strict-mcp-config)"
+  echo ""
+fi
+
+exec claude "$@"
