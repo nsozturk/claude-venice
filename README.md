@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.0.1-8b5cf6" alt="Release v1.0.1"></a>
+  <a href="https://github.com/nsozturk/claude-venice/releases"><img src="https://img.shields.io/badge/release-v1.1.0-8b5cf6" alt="Release v1.1.0"></a>
   <img src="https://img.shields.io/badge/bash%20%2B%20python-3.10%2B-3776ab?logo=python&logoColor=white" alt="Bash + Python 3.10+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22c55e" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/API%20cost-zero-0ea5e9" alt="API cost: zero">

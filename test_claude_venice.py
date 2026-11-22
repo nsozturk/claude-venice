@@ -17,21 +17,26 @@ def make_fake_bin(tmpdir: str) -> str:
     with open(curl_p, "w") as f:
         f.write('#!/usr/bin/env bash\necho \'{"ok": true, "venice_session": "active", "chat_quota": {"remaining": 5000}}\'\n')
     os.chmod(curl_p, 0o755)
-    # Stub claude: dumps env MODEL + argv as JSON
+    # Stub claude: dumps env MODEL + BASE_URL + AUTH_SET + argv as JSON
     claude_p = os.path.join(bindir, "claude")
     with open(claude_p, "w") as f:
         f.write(
             '#!/usr/bin/env python3\n'
             'import json, os, sys\n'
-            'print(json.dumps({"model": os.environ.get("ANTHROPIC_MODEL"), "argv": sys.argv[1:]}))\n'
+            'print(json.dumps({"model": os.environ.get("ANTHROPIC_MODEL"), '
+            '"base_url": os.environ.get("ANTHROPIC_BASE_URL"), '
+            '"has_token": bool(os.environ.get("ANTHROPIC_AUTH_TOKEN")), '
+            '"argv": sys.argv[1:]}))\n'
         )
     os.chmod(claude_p, 0o755)
     return bindir
 
 
-def run_launcher(bindir: str, args: list) -> dict:
+def run_launcher(bindir: str, args: list, extra_env: dict = None) -> dict:
     env = os.environ.copy()
     env["PATH"] = bindir + ":" + env.get("PATH", "")
+    if extra_env:
+        env.update(extra_env)
     out = subprocess.check_output(["bash", LAUNCHER] + args, env=env, text=True)
     return json.loads(out.strip().splitlines()[-1])
 
@@ -89,7 +94,70 @@ def main():
         r = run_launcher(bindir, ["--permission-mode", "plan", "-p", "hi"])
         assert "--dangerously-skip-permissions" not in r["argv"], r
 
-    print("claude-venice --lean tests ok")
+        # 9. --unquant uses Unquant default model & strips --unquant from argv
+        r = run_launcher(
+            bindir,
+            ["--unquant", "-p", "hi"],
+            extra_env={"UNQUANT_API_KEY": "test-dummy-key", "UNQUANT_BASE_URL": "https://api.unquant.io"},
+        )
+        assert "--unquant" not in r["argv"], r
+        assert r["model"] == "deepseek-v4.1-flash-1017", r
+        assert r["base_url"] == "https://api.unquant.io", r
+        assert r["has_token"] is True, r
+
+        # 10. --unquant with explicit -m and --lean
+        r = run_launcher(
+            bindir,
+            ["--unquant", "-m", "glm-5.3-flash", "--lean", "-p", "hi"],
+            extra_env={"UNQUANT_API_KEY": "test-dummy-key", "UNQUANT_BASE_URL": "https://api.unquant.io"},
+        )
+        assert "--unquant" not in r["argv"] and "--lean" not in r["argv"], r
+        assert r["model"] == "glm-5.3-flash", r
+        assert "--strict-mcp-config" in r["argv"], r
+
+        # 11. --zai uses Z.AI Coding Plan default glm-5.3 & Anthropic endpoint
+        r = run_launcher(
+            bindir,
+            ["--zai", "-p", "hi"],
+            extra_env={"ZAI_API_KEY": "test-dummy-zai-key"},
+        )
+        assert "--zai" not in r["argv"], r
+        assert r["model"] == "glm-5.3", r
+        assert r["base_url"] == "https://api.z.ai/api/anthropic", r
+        assert r["has_token"] is True, r
+
+        # 12. --zai with explicit -m and --lean
+        r = run_launcher(
+            bindir,
+            ["--zai", "-m", "glm-5.3-flash", "--lean", "-p", "hi"],
+            extra_env={"ZAI_API_KEY": "test-dummy-zai-key"},
+        )
+        assert "--zai" not in r["argv"] and "--lean" not in r["argv"], r
+        assert r["model"] == "glm-5.3-flash", r
+        assert "--strict-mcp-config" in r["argv"], r
+
+        # 13. --go / --opencode-go uses OpenCode Go default mimo-v2.6-flash & Anthropic endpoint
+        r = run_launcher(
+            bindir,
+            ["--go", "-p", "hi"],
+            extra_env={"OPENCODE_GO_API_KEY": "test-dummy-go-key"},
+        )
+        assert "--go" not in r["argv"], r
+        assert r["model"] == "mimo-v2.6-flash", r
+        assert r["base_url"] == "https://opencode.ai/inference/go/anthropic", r
+        assert r["has_token"] is True, r
+
+        # 14. --opencode-go with explicit -m and --lean
+        r = run_launcher(
+            bindir,
+            ["--opencode-go", "-m", "qwen4-max", "--lean", "-p", "hi"],
+            extra_env={"OPENCODE_GO_API_KEY": "test-dummy-go-key"},
+        )
+        assert "--opencode-go" not in r["argv"] and "--lean" not in r["argv"], r
+        assert r["model"] == "qwen4-max", r
+        assert "--strict-mcp-config" in r["argv"], r
+
+    print("claude-venice --lean + --unquant + --zai + --go tests ok")
 
 
 if __name__ == "__main__":

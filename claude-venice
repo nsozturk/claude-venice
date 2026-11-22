@@ -1,34 +1,61 @@
 #!/usr/bin/env bash
-# claude-venice — Claude Code CLI on a local venice-bridge (your venice.ai web plan, no API credits).
+# claude-venice — Claude Code CLI on the owner's local Venice bridge (venice.ai WEB plan, free).
 #
 #   claude  --/v1/messages-->  venice-adapters :18892  -->  venice-bridge :18891  -->  venice.ai web
 #
 # Isolated profile ~/.claude-venice: the official `claude`/Opus install and its auth stay untouched.
-# Default model is `deepseek-v4-1-flash-uncensored`; override with -m <id>, VENICE_CLAUDE_MODEL, or /model.
+# Mirrors the `ccl` (local models) and `claude-glm` (Z.AI) launchers. Default model is the owner's
+# required `deepseek-v4-1-flash-uncensored`; override with -m <id>, VENICE_CLAUDE_MODEL, or /model.
 #
 # Usage:  claude-venice [-m <venice-model-id>] [--lean] [claude args...]
-#         claude-venice --models     # list Venice model ids the bridge serves
+#         claude-venice --unquant [-m <unquant-model-id>] [--lean] [claude args...]
+#         claude-venice --zai [-m <glm-model-id>] [--lean] [claude args...]
+#         claude-venice --go [-m <opencode-go-model-id>] [--lean] [claude args...]
+#         claude-venice --models              # list Venice model ids the bridge serves
+#         claude-venice --unquant --models    # list Unquant model ids your API key serves
+#         claude-venice --zai --models        # list Z.AI Coding Plan GLM models
+#         claude-venice --go --models         # list OpenCode Go models
 set -euo pipefail
 
 ADAPTER="http://127.0.0.1:18892"
 BRIDGE="http://127.0.0.1:18891"
+UNQUANT_GATE="http://127.0.0.1:18893"
+UNQUANT_DIRECT="https://api.unquant.io"
+UNQUANT_KEY_FILE="${UNQUANT_API_KEY_FILE:-$HOME/.config/venice-bridge/unquant-api-key.txt}"
+ZAI_ANTHROPIC_URL="https://api.z.ai/api/anthropic"
+ZAI_MODELS_URL="https://api.z.ai/api/coding/paas/v4/models"
+ZAI_KEY_FILE="${ZAI_API_KEY_FILE:-$HOME/.config/venice-bridge/zai-api-key.txt}"
+OPENCODE_GO_ANTHROPIC_URL="https://opencode.ai/inference/go/anthropic"
+OPENCODE_GO_MODELS_URL="https://opencode.ai/inference/go/openai/v1/models"
+OPENCODE_GO_KEY_FILE="${OPENCODE_GO_API_KEY_FILE:-$HOME/.config/venice-bridge/opencode-go-api-key.txt}"
 PROFILE="$HOME/.claude-venice"
-MODEL="${VENICE_CLAUDE_MODEL:-deepseek-v4-1-flash-uncensored}"
+MODEL=""
+MODEL_EXPLICIT=0
 LEAN=0
+BACKEND="${VENICE_CLAUDE_BACKEND:-venice}"
 
-# Parse launcher-owned flags anywhere before `--`: -m <model> and --lean.
+# Parse launcher-owned flags anywhere before `--`: -m <model>, --lean, --unquant, --zai, --go/--opencode-go.
 PASS_ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -m)
       if [ "$#" -ge 2 ]; then
-        MODEL="$2"; shift 2
+        MODEL="$2"; MODEL_EXPLICIT=1; shift 2
       else
         PASS_ARGS+=("$1"); shift
       fi
       ;;
     --lean)
       LEAN=1; shift
+      ;;
+    --unquant)
+      BACKEND="unquant"; shift
+      ;;
+    --zai)
+      BACKEND="zai"; shift
+      ;;
+    --go|--opencode-go)
+      BACKEND="opencode-go"; shift
       ;;
     --)
       PASS_ARGS+=("$@"); break
@@ -44,14 +71,91 @@ else
   set --
 fi
 
+if [ "$MODEL_EXPLICIT" = "0" ]; then
+  if [ "$BACKEND" = "unquant" ]; then
+    MODEL="${UNQUANT_CLAUDE_MODEL:-deepseek-v4.1-flash-1017}"
+  elif [ "$BACKEND" = "zai" ]; then
+    MODEL="${ZAI_CLAUDE_MODEL:-glm-5.3}"
+  elif [ "$BACKEND" = "opencode-go" ]; then
+    MODEL="${OPENCODE_GO_CLAUDE_MODEL:-mimo-v2.6-flash}"
+  else
+    MODEL="${VENICE_CLAUDE_MODEL:-deepseek-v4-1-flash-uncensored}"
+  fi
+fi
+
+die() { echo "❌ $1" >&2; exit 1; }
+
+resolve_unquant_key() {
+  if [ -n "${UNQUANT_API_KEY:-}" ]; then
+    printf '%s' "$UNQUANT_API_KEY"
+    return 0
+  fi
+  if [ -r "$UNQUANT_KEY_FILE" ]; then
+    tr -d '\r\n' < "$UNQUANT_KEY_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_zai_key() {
+  if [ -n "${ZAI_API_KEY:-}" ]; then
+    printf '%s' "$ZAI_API_KEY"
+    return 0
+  fi
+  if [ -r "$ZAI_KEY_FILE" ]; then
+    tr -d '\r\n' < "$ZAI_KEY_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_opencode_go_key() {
+  if [ -n "${OPENCODE_GO_API_KEY:-}" ]; then
+    printf '%s' "$OPENCODE_GO_API_KEY"
+    return 0
+  fi
+  if [ -r "$OPENCODE_GO_KEY_FILE" ]; then
+    tr -d '\r\n' < "$OPENCODE_GO_KEY_FILE"
+    return 0
+  fi
+  return 1
+}
+
 if [ "${1:-}" = "--models" ]; then
-  curl -s --noproxy '*' --max-time 10 "$BRIDGE/v1/models" \
-    | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  if [ "$BACKEND" = "unquant" ]; then
+    UQ_KEY="$(resolve_unquant_key || true)"
+    [ -n "$UQ_KEY" ] || die "Unquant API key not found. Set UNQUANT_API_KEY or save it to $UNQUANT_KEY_FILE (chmod 600)."
+    curl -s --max-time 10 -H "Authorization: Bearer $UQ_KEY" "$UNQUANT_DIRECT/v1/models" \
+      | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  elif [ "$BACKEND" = "zai" ]; then
+    Z_KEY="$(resolve_zai_key || true)"
+    [ -n "$Z_KEY" ] || die "Z.AI API key not found. Set ZAI_API_KEY or save it to $ZAI_KEY_FILE (chmod 600)."
+    curl -s --max-time 10 -H "Authorization: Bearer $Z_KEY" "$ZAI_MODELS_URL" \
+      | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  elif [ "$BACKEND" = "opencode-go" ]; then
+    GO_KEY="$(resolve_opencode_go_key || true)"
+    [ -n "$GO_KEY" ] || die "OpenCode Go API key not found. Set OPENCODE_GO_API_KEY or save it to $OPENCODE_GO_KEY_FILE (chmod 600)."
+    curl -s --max-time 10 -H "Authorization: Bearer $GO_KEY" "$OPENCODE_GO_MODELS_URL" \
+      | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  else
+    curl -s --noproxy '*' --max-time 10 "$BRIDGE/v1/models" \
+      | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin).get('data',[])]"
+  fi
   exit 0
 fi
 
 # --quota: show remaining Venice web quota + bridge cache stats (works for any bridge user, incl. OpenCode)
 if [ "${1:-}" = "--quota" ]; then
+  if [ "$BACKEND" = "unquant" ]; then
+    echo "Unquant.io — flat-rate unlimited tokens (concurrency-metered per plan)."
+    exit 0
+  elif [ "$BACKEND" = "zai" ]; then
+    echo "Z.AI Coding Plan — dedicated GLM coding plan (endpoint: $ZAI_ANTHROPIC_URL)."
+    exit 0
+  elif [ "$BACKEND" = "opencode-go" ]; then
+    echo "OpenCode Go — check weekly usage at https://opencode.ai/console (endpoint: $OPENCODE_GO_ANTHROPIC_URL)."
+    exit 0
+  fi
   curl -s --noproxy '*' --max-time 5 "$BRIDGE/health" \
     | python3 -c "import sys,json
 d=json.load(sys.stdin); q=d.get('chat_quota') or {}; c=d.get('cache') or {}
@@ -61,36 +165,91 @@ print('Bridge cache      hits=%s misses=%s entries=%s enabled=%s' % (c.get('hits
   exit 0
 fi
 
-# --- preflight: bridge + adapter must be up and the Venice session active ---
-die() { echo "❌ $1" >&2; exit 1; }
+# --- preflight + routing ---
+Q_REM=""
+TARGET_URL=""
 
-bh="$(curl -s --noproxy '*' --max-time 3 "$BRIDGE/health" 2>/dev/null || true)"
-[ -n "$bh" ] || die "venice-bridge ($BRIDGE) is down.  Start it: python3 venice_bridge.py"
-echo "$bh" | grep -q '"venice_session": *"active"' \
-  || die "Venice web session is not active (login expired). Refresh the cookie file (README, Quick start step 1)."
+if [ "$BACKEND" = "unquant" ]; then
+  UQ_KEY="$(resolve_unquant_key || true)"
+  [ -n "$UQ_KEY" ] || die "Unquant API key not found. Set UNQUANT_API_KEY or save it to $UNQUANT_KEY_FILE (chmod 600)."
+  if [ -n "${UNQUANT_BASE_URL:-}" ]; then
+    TARGET_URL="${UNQUANT_BASE_URL%/}"
+  elif curl -s --noproxy '*' --max-time 2 "$UNQUANT_GATE/health" >/dev/null 2>&1; then
+    TARGET_URL="$UNQUANT_GATE"
+  else
+    TARGET_URL="$UNQUANT_DIRECT"
+  fi
+  export CLAUDE_CONFIG_DIR="$PROFILE"
+  export CLAUDE_HOME="$PROFILE"
+  mkdir -p "$PROFILE"
+  unset ANTHROPIC_API_KEY
+  export ANTHROPIC_BASE_URL="$TARGET_URL"
+  export ANTHROPIC_AUTH_TOKEN="$UQ_KEY"
+  export ANTHROPIC_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+elif [ "$BACKEND" = "zai" ]; then
+  Z_KEY="$(resolve_zai_key || true)"
+  [ -n "$Z_KEY" ] || die "Z.AI API key not found. Set ZAI_API_KEY or save it to $ZAI_KEY_FILE (chmod 600)."
+  TARGET_URL="${ZAI_BASE_URL:-$ZAI_ANTHROPIC_URL}"
+  TARGET_URL="${TARGET_URL%/}"
+  export CLAUDE_CONFIG_DIR="$PROFILE"
+  export CLAUDE_HOME="$PROFILE"
+  mkdir -p "$PROFILE"
+  unset ANTHROPIC_API_KEY
+  export ANTHROPIC_BASE_URL="$TARGET_URL"
+  export ANTHROPIC_AUTH_TOKEN="$Z_KEY"
+  export ANTHROPIC_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+elif [ "$BACKEND" = "opencode-go" ]; then
+  GO_KEY="$(resolve_opencode_go_key || true)"
+  [ -n "$GO_KEY" ] || die "OpenCode Go API key not found. Set OPENCODE_GO_API_KEY or save it to $OPENCODE_GO_KEY_FILE (chmod 600)."
+  TARGET_URL="${OPENCODE_GO_BASE_URL:-$OPENCODE_GO_ANTHROPIC_URL}"
+  TARGET_URL="${TARGET_URL%/}"
+  export CLAUDE_CONFIG_DIR="$PROFILE"
+  export CLAUDE_HOME="$PROFILE"
+  mkdir -p "$PROFILE"
+  unset ANTHROPIC_API_KEY
+  export ANTHROPIC_BASE_URL="$TARGET_URL"
+  export ANTHROPIC_AUTH_TOKEN="$GO_KEY"
+  export ANTHROPIC_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+else
+  # --- preflight: bridge + adapter must be up and the Venice session active ---
+  bh="$(curl -s --noproxy '*' --max-time 3 "$BRIDGE/health" 2>/dev/null || true)"
+  [ -n "$bh" ] || die "venice-bridge ($BRIDGE) is down.  Restart: launchctl kickstart -k gui/$(id -u)/dev.lamma.venice-bridge"
+  echo "$bh" | grep -q '"venice_session": *"active"' \
+    || die "Venice web session is not active (login expired). See the venice-bridge agent for re-login."
 
-curl -s --noproxy '*' --max-time 3 "$ADAPTER/health" >/dev/null 2>&1 \
-  || die "venice-adapters ($ADAPTER) is down.  Start it: python3 venice_adapters.py"
+  curl -s --noproxy '*' --max-time 3 "$ADAPTER/health" >/dev/null 2>&1 \
+    || die "venice-adapters ($ADAPTER) is down.  Restart: launchctl kickstart -k gui/$(id -u)/dev.lamma.venice-adapters"
 
-# quota monitor: the web plan is request-metered, so watch the daily quota (not tokens). Warn when low.
-Q_REM="$(echo "$bh" | python3 -c "import sys,json; print((json.load(sys.stdin).get('chat_quota') or {}).get('remaining',''))" 2>/dev/null || echo '')"
-case "$Q_REM" in
-  ''|*[!0-9]*) : ;;                                   # unknown / non-numeric: skip
-  *) [ "$Q_REM" -lt 500 ] && echo "⚠️  Venice web quota low: $Q_REM requests left today (run 'claude-venice --quota')." >&2 ;;
-esac
+  # quota monitor: the web plan is request-metered, so watch the daily quota (not tokens). Warn when low.
+  Q_REM="$(echo "$bh" | python3 -c "import sys,json; print((json.load(sys.stdin).get('chat_quota') or {}).get('remaining',''))" 2>/dev/null || echo '')"
+  case "$Q_REM" in
+    ''|*[!0-9]*) : ;;                                   # unknown / non-numeric: skip
+    *) [ "$Q_REM" -lt 500 ] && echo "⚠️  Venice web quota low: $Q_REM requests left today (run 'claude-venice --quota')." >&2 ;;
+  esac
 
-# --- isolated profile + Venice routing (overrides any inherited provider/auth env) ---
-export CLAUDE_CONFIG_DIR="$PROFILE"
-export CLAUDE_HOME="$PROFILE"
-mkdir -p "$PROFILE"
+  # --- isolated profile + Venice routing (overrides any inherited provider/auth env) ---
+  TARGET_URL="$ADAPTER"
+  export CLAUDE_CONFIG_DIR="$PROFILE"
+  export CLAUDE_HOME="$PROFILE"
+  mkdir -p "$PROFILE"
 
-unset ANTHROPIC_API_KEY            # no real Anthropic credential reaches Venice
-export ANTHROPIC_BASE_URL="$ADAPTER"
-export ANTHROPIC_AUTH_TOKEN="venice-local"   # adapter ignores auth; a filler keeps Claude Code happy
-export ANTHROPIC_MODEL="$MODEL"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+  unset ANTHROPIC_API_KEY            # no real Anthropic credential reaches Venice
+  export ANTHROPIC_BASE_URL="$ADAPTER"
+  export ANTHROPIC_AUTH_TOKEN="venice-local"   # adapter ignores auth; a filler keeps Claude Code happy
+  export ANTHROPIC_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
+fi
 
 # a local Venice id is not a known Claude model — skip the context-window enforcement warning
 export CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT="1"
@@ -143,9 +302,20 @@ if [ "$LEAN" = "1" ]; then
 fi
 
 if [ -t 1 ]; then
-  echo "🜂 Claude Code on Venice — model: $MODEL"
-  echo "   adapter: $ADAPTER   profile: $PROFILE   (official claude/Opus untouched)"
-  [ -n "$Q_REM" ] && echo "   web quota remaining: $Q_REM   (bridge response-cache on; 'claude-venice --quota' for details)"
+  if [ "$BACKEND" = "unquant" ]; then
+    echo "⚡ Claude Code on Unquant — model: $MODEL"
+    echo "   endpoint: $TARGET_URL   profile: $PROFILE   (official claude/Opus untouched)"
+  elif [ "$BACKEND" = "zai" ]; then
+    echo "⚡ Claude Code on Z.AI Coding Plan — model: $MODEL"
+    echo "   endpoint: $TARGET_URL   profile: $PROFILE   (official claude/Opus untouched)"
+  elif [ "$BACKEND" = "opencode-go" ]; then
+    echo "⚡ Claude Code on OpenCode Go — model: $MODEL"
+    echo "   endpoint: $TARGET_URL   profile: $PROFILE   (official claude/Opus untouched)"
+  else
+    echo "🜂 Claude Code on Venice — model: $MODEL"
+    echo "   adapter: $ADAPTER   profile: $PROFILE   (official claude/Opus untouched)"
+    [ -n "$Q_REM" ] && echo "   web quota remaining: $Q_REM   (bridge response-cache on; 'claude-venice --quota' for details)"
+  fi
   [ "$add_skip" = "1" ] && echo "   permissions: skipped — no prompts (set VENICE_CLAUDE_SKIP_PERMS=0 to restore)"
   [ "$LEAN" = "1" ] && echo "   mode: --lean (MCP servers disabled via --strict-mcp-config)"
   echo ""

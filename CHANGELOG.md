@@ -3,6 +3,13 @@
 All notable changes to `claude-venice` are documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.1.0 — 2026-11-22
+
+### Added
+- **Multi-backend routing (`--unquant`, `--zai`, `--go` / `--opencode-go`)** — switch seamlessly between Venice Bridge (default), Unquant.io (`deepseek-v4.1-flash-1017`), Z.AI Coding Plan (`glm-5.3` / `glm-5.3-flash` / all 12 GLM models), and OpenCode Go (`mimo-v2.6-flash` / all 27 Go models) while sharing the same isolated `~/.claude-venice` session history (`-c` / `-r` works across backends).
+- **Per-backend `--models` discovery** — `claude-venice --unquant --models`, `claude-venice --zai --models`, and `claude-venice --go --models`.
+- **Zero-secret `0600` key resolution** — reads API keys from environment variables (`UNQUANT_API_KEY`, `ZAI_API_KEY`, `OPENCODE_GO_API_KEY`) or `~/.config/venice-bridge/*-api-key.txt`; never embeds credentials in the launcher.
+
 ## 1.0.1 — 2026-11-21
 
 ### Changed

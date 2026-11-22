@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use claude-venice in your work, please cite it as below."
 title: "claude-venice"
-version: "1.0.1"
+version: "1.1.0"
 date-released: "2026-11-21"
 license: "MIT"
 repository-code: "https://github.com/nsozturk/claude-venice"
